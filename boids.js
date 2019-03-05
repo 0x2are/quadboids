@@ -156,7 +156,8 @@ const bounds = new AABB(width/2, height/2, width, height);
 let tree = new QuadTree(bounds);
 
 function setup() {
-  createCanvas(width, height);
+  const canvas = createCanvas(width, height);
+  canvas.parent("p5-holder");
 
   for (let i = 0; i < startingBoids; ++i) {
     const x = Math.random() * width;
