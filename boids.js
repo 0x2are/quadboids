@@ -22,6 +22,8 @@ let showTree = false;
 const boids = [];
 const bounds = new AABB(width/2, height/2, width, height);
 let tree = new QuadTree(bounds);
+let canvas = null;
+
 
 function onSliderChange(id) {
   const input = window[id];
@@ -32,7 +34,7 @@ function onSliderChange(id) {
 }
 
 window.onresize = () => {
-
+  resizeCanvas(window.innerWidth, window.innerHeight);
 }
 
 class Boid {
@@ -187,7 +189,7 @@ class Boid {
 }
 
 function setup() {
-  const canvas = createCanvas(width, height);
+  canvas = createCanvas(width, height);
   canvas.parent("p5-holder");
   canvas.canvas.classList.add("bgcanv");
   
