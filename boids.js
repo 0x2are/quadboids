@@ -2,26 +2,27 @@ let sightRad = 64;
 let sepDistSq = 20 ** 2;
 
 let weights = {
-  "group": 0.1,
-  "align": 0.7,
-  "separate": 0.3
+  "group": 0.,
+  "align": 0.,
+  "separate": 0.,
+  "smouse": 0.,
+  "fmouse": 0.
 };
 
-let g_boidSpeed = 8;
+let g_boidSpeed = 300.;
 
-const width = window.innerWidth;
-const height = window.innerHeight;
-const startingBoids = 400;
+const startingBoids = 200;
 
 const style = getComputedStyle(document.documentElement);
 const hue = style.getPropertyValue("--accent-hue");
 const sat = parseInt(style.getPropertyValue("--accent-sat"));
 
 let showTree = false;
+let mousePos = null;
 
 const boids = [];
-const bounds = new AABB(width/2, height/2, width, height);
-let tree = new QuadTree(bounds);
+let bounds = null;
+let tree = null;
 let canvas = null;
 
 
@@ -33,9 +34,11 @@ function onSliderChange(id) {
   weights[id] = parseFloat(v);
 }
 
+
 window.onresize = () => {
   resizeCanvas(window.innerWidth, window.innerHeight);
 }
+
 
 class Boid {
   constructor(x, y) {
@@ -43,45 +46,40 @@ class Boid {
     this.vel = createVector(Math.random(), Math.random());
     this.accel = createVector(0, 0);
 
-    g_boidSpeed = 6;
     this.vel.mult(g_boidSpeed);
   }
 
 
   wrap() {
-    if (this.loc.x > width) {
+    if (this.loc.x > canvas.width) {
       this.loc.x = 0;
     }
 
     if (this.loc.x < 0) {
-      this.loc.x = width;
+      this.loc.x = canvas.width;
     }
 
-    if (this.loc.y > height) {
+    if (this.loc.y > canvas.height) {
       this.loc.y = 0;
     }
 
     if (this.loc.y < 0) {
-      this.loc.y = height;
+      this.loc.y = canvas.height;
     }
   }
 
 
   seek(target) {
-    const maxForce = 0.5;
-
     const desired = p5.Vector.sub(target, this.loc);
     desired.setMag(g_boidSpeed);
 
     const steering = p5.Vector.sub(desired, this.vel);
-    steering.limit(maxForce);
+    steering.limit(weights["smouse"]);
 
     this.applyForce(steering);
   }
 
   flee(target) {
-    const maxForce = 0.9;
-
     const desired = p5.Vector.sub(this.loc, target);
     const dist = desired.magSq();
     
@@ -89,7 +87,7 @@ class Boid {
       desired.setMag(g_boidSpeed);
   
       const steering = p5.Vector.sub(desired, this.vel);
-      steering.limit(maxForce);
+      steering.limit(weights["fmouse"]);
   
       this.applyForce(steering);
     }
@@ -159,17 +157,13 @@ class Boid {
   }
 
 
-  update() {
-    const mouse = createVector(mouseX, mouseY);
-
+  update(dt) {
     this.flock();
+    this.seek(mousePos);
+    this.flee(mousePos);
 
-    if (mouseIsPressed) {
-      this.seek(mouse);
-    }
-
-    this.vel.add(this.accel);
-    this.loc.add(this.vel);
+    this.vel.add(p5.Vector.mult(this.accel, dt));
+    this.loc.add(p5.Vector.mult(this.vel, dt));
 
     this.accel.set(0, 0);
 
@@ -189,27 +183,45 @@ class Boid {
 }
 
 function setup() {
-  canvas = createCanvas(width, height);
+  canvas = createCanvas(window.innerWidth, window.innerHeight);
   canvas.parent("p5-holder");
   canvas.canvas.classList.add("bgcanv");
   
+  mousePos = createVector(mouseX, mouseY);
   colorMode(HSL);
   rectMode(CENTER);
   noFill();
 
+  bounds = new AABB(canvas.width/2, height/2, width, height);
+  tree = new QuadTree(bounds);
+
   for (let i = 0; i < startingBoids; ++i) {
-    const x = Math.random() * width;
-    const y = Math.random() * height;
+    const x = Math.random() * canvas.width;
+    const y = Math.random() * canvas.height;
     const b = new Boid(x, y);
 
     boids.push(b);
   }
+
+  //initialise weights and the output elements
+  onSliderChange("group");
+  onSliderChange("align");
+  onSliderChange("separate");
+  onSliderChange("smouse");
+  onSliderChange("fmouse");
 }
 
 
-function draw() {
-  clear();
+let lastFrameUpdate = 0;
 
+function draw() {
+  const now = performance.now() / 1000.;
+  const dt = now - lastFrameUpdate;
+  lastFrameUpdate = now;
+
+  mousePos.set(mouseX, mouseY);
+
+  clear();
   buildTree();
   
   if (showTree) {
@@ -219,9 +231,8 @@ function draw() {
   
   stroke(hue, sat, 50);
   for (const b of boids) {
-    b.update();
+    b.update(dt);
     b.draw();
-    b.flee(createVector(mouseX, mouseY))
   }
 
   // text("FPS: " + Math.floor(frameRate()), 50, 170);
