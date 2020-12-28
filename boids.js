@@ -1,11 +1,48 @@
+let sightRad = 64;
+let sepDistSq = 20 ** 2;
+
+let weights = {
+  "group": 0.1,
+  "align": 0.7,
+  "separate": 0.3
+};
+
+let g_boidSpeed = 8;
+
+const width = window.innerWidth;
+const height = window.innerHeight;
+const startingBoids = 400;
+
+const style = getComputedStyle(document.documentElement);
+const hue = style.getPropertyValue("--accent-hue");
+const sat = parseInt(style.getPropertyValue("--accent-sat"));
+
+let showTree = false;
+
+const boids = [];
+const bounds = new AABB(width/2, height/2, width, height);
+let tree = new QuadTree(bounds);
+
+function onSliderChange(id) {
+  const input = window[id];
+  const out = input.getAttribute("out");
+  const v = input.value;
+  window[out].value = v;
+  weights[id] = parseFloat(v);
+}
+
+window.onresize = () => {
+
+}
+
 class Boid {
   constructor(x, y) {
     this.loc = createVector(x, y);
     this.vel = createVector(Math.random(), Math.random());
     this.accel = createVector(0, 0);
 
-    this.maxSpeed = 3;
-    this.vel.mult(this.maxSpeed);
+    g_boidSpeed = 6;
+    this.vel.mult(g_boidSpeed);
   }
 
 
@@ -32,12 +69,28 @@ class Boid {
     const maxForce = 0.5;
 
     const desired = p5.Vector.sub(target, this.loc);
-    desired.setMag(this.maxSpeed);
+    desired.setMag(g_boidSpeed);
 
     const steering = p5.Vector.sub(desired, this.vel);
     steering.limit(maxForce);
 
     this.applyForce(steering);
+  }
+
+  flee(target) {
+    const maxForce = 0.9;
+
+    const desired = p5.Vector.sub(this.loc, target);
+    const dist = desired.magSq();
+    
+    if (dist < 80 ** 2) {
+      desired.setMag(g_boidSpeed);
+  
+      const steering = p5.Vector.sub(desired, this.vel);
+      steering.limit(maxForce);
+  
+      this.applyForce(steering);
+    }
   }
 
 
@@ -46,35 +99,27 @@ class Boid {
     const desiredAlign = createVector(0, 0);
     const desiredSep = createVector(0, 0);
     
-    const sightRad = 64;
-    const desiredSepDist = 20; 
-    const maxAlignForce = 0.2;
-    const maxSepForce = 0.7;
-    const maxGroupForce = 0.15;
-    
     const circle = new Circle(this.loc.x, this.loc.y, sightRad);
-    const sepCircle = new Circle(this.loc.x, this.loc.y, desiredSepDist);
     const boidsInRange = tree.query(circle);
-    const boidsInSepRange = tree.query(sepCircle);
     
     const count = boidsInRange.length - 1; //sub 1 to exclude this
-    const sepCount = boidsInSepRange.length - 1;
+    let sepCount = 0;
 
     for (const b of boidsInRange) {
       if (b != this) {
         avgPos.add(b.loc);
         desiredAlign.add(b.vel);
-      }
-    }
 
-    for (const b of boidsInSepRange) {
-      if (b != this) {
-        const bToMe = p5.Vector.sub(this.loc, b.loc);
-        const d = bToMe.mag();
-            
-        bToMe.normalize();
-        bToMe.div(d);
-        desiredSep.add(bToMe);
+        const diff = p5.Vector.sub(this.loc, b.loc);
+        const xds = diff.x ** 2;
+        const yds = diff.y ** 2;
+        const distSq = xds + yds;
+
+        if (distSq < sepDistSq) {
+          ++sepCount;
+          diff.div(distSq);
+          desiredSep.add(diff);
+        }
       }
     }
 
@@ -82,31 +127,27 @@ class Boid {
       //group force
       avgPos.div(count);
       const desiredGroup = p5.Vector.sub(avgPos, this.loc);
-      desiredGroup.setMag(this.maxSpeed);
+      desiredGroup.setMag(g_boidSpeed);
 
       const steeringGroup = p5.Vector.sub(desiredGroup, this.vel);
-      steeringGroup.limit(maxGroupForce);
+      steeringGroup.limit(weights["group"]);
+      this.applyForce(steeringGroup);
 
       //align force
       desiredAlign.div(count);
       const steeringAlign = p5.Vector.sub(desiredAlign, this.vel);
-      
-      steeringAlign.limit(maxAlignForce);
-      
-      ///apply
-      this.applyForce(steeringGroup);
+      steeringAlign.limit(weights["align"]);
       this.applyForce(steeringAlign);
-    }
 
-    //create and apply the separation force
-    if (sepCount > 0) {
-      desiredSep.div(sepCount);
-      desiredSep.setMag(this.maxSpeed);
-
-      const steeringSep = p5.Vector.sub(desiredSep, this.vel);
-      steeringSep.limit(maxSepForce);
-
-      this.applyForce(steeringSep);
+      //separation force
+      if (sepCount > 0) {
+        desiredSep.div(sepCount);
+        desiredSep.setMag(g_boidSpeed);
+        const steeringSep = p5.Vector.sub(desiredSep, this.vel);
+        steeringSep.limit(weights["separate"]);
+        this.applyForce(steeringSep);
+      }
+      
     }
   }
 
@@ -145,19 +186,14 @@ class Boid {
   }
 }
 
-const width = 1280;
-const height = 720;
-const startingBoids = 100;
-
-let showTree = false;
-
-const boids = [];
-const bounds = new AABB(width/2, height/2, width, height);
-let tree = new QuadTree(bounds);
-
 function setup() {
   const canvas = createCanvas(width, height);
   canvas.parent("p5-holder");
+  canvas.canvas.classList.add("bgcanv");
+  
+  colorMode(HSL);
+  rectMode(CENTER);
+  noFill();
 
   for (let i = 0; i < startingBoids; ++i) {
     const x = Math.random() * width;
@@ -166,45 +202,27 @@ function setup() {
 
     boids.push(b);
   }
-
-  rectMode(CENTER);
 }
 
 
 function draw() {
-  background(255);
+  clear();
 
   buildTree();
   
-  stroke(255,0,0);
-
   if (showTree) {
+    stroke(hue,sat,20);
     tree.draw();
   }
   
-  stroke(0);
+  stroke(hue, sat, 50);
   for (const b of boids) {
     b.update();
     b.draw();
+    b.flee(createVector(mouseX, mouseY))
   }
 
-  const circle = new Circle(mouseX, mouseY, 100);
-  const closeBoids = tree.query(circle);
-  stroke(0,255,0);
-  for (const b of closeBoids) {
-    ellipse(b.loc.x, b.loc.y, 10, 10);
-  }
-  
-  noStroke();
-  fill(255,0,255);
-  text(boids.length, 50, 50);
-  text(Math.floor(frameRate()), 50, 70);
-  noFill();
-}
-
-
-function mouseDragged() {
-  boids.push(new Boid(mouseX, mouseY));
+  // text("FPS: " + Math.floor(frameRate()), 50, 170);
 }
 
 
@@ -215,9 +233,8 @@ function keyPressed() {
 }
 
 
-
 function buildTree() {
-  tree = new QuadTree(bounds, 4);
+  tree = new QuadTree(bounds, 1);
 
   for (const b of boids) {
     tree.insert(b);

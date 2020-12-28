@@ -27,43 +27,37 @@ class AABB {
     this.y = y;
     this.w = w;
     this.h = h;
+
+    this.hw = this.w/2.;
+    this.hh = this.h/2.;
+
+    this.l = this.x - this.hw;
+    this.r = this.x + this.hw;
+    this.t = this.y - this.hh;
+    this.b = this.y + this.hh;
   }
 
 
-  intersectsRect(rect) {
-    const l = this.x - this.w/2;
-    const r = this.x + this.w/2;
-    const t = this.y - this.h/2;
-    const b = this.y + this.h/2;
-    const ol = rect.x - rect.w/2;
-    const or = rect.x + rect.w/2;
-    const ot = rect.y - rect.h/2;
-    const ob = rect.y + rect.h/2;
-
-    const left = ol <= r && ol >= l;
-    const right = or <= r && or >= l;
-    const top = ot <= b && ot >= t;
-    const bot = ob <= b && ob >= t;
-
-    const oLeft = l <= or && l >= ol;
-    const oRight = r <= or && r >= ol;
-    const oTop = t <= ob && t >= ot;
-    const oBot = b <= ob && b >= ot;
-
-    const thisIntOther = (left || right) && (top || bot);
-    const otherIntThis = (oLeft || oRight) && (oTop || oBot);
-
-    return thisIntOther || otherIntThis;
+  intersectsRect(aabb) {
+    return !(
+      (this.l > aabb.r) ||
+      (this.r < aabb.l) ||
+      (this.t > aabb.b) ||
+      (this.b < aabb.t)
+    );
   }
 
 
   intersectsCircle(circle) {
-    const hw = this.w/2;
-    const hh = this.h/2;
-    const toRight = circle.x > this.x + hw;
-    const toLeft = circle.x < this.x - hw;
-    const above = circle.y < this.y - hh;
-    const below = circle.y > this.y + hh;
+    if (this.contains(circle))
+    {
+      return true;
+    }
+
+    const toRight = circle.x > this.r;
+    const toLeft = circle.x < this.l;
+    const above = circle.y < this.t;
+    const below = circle.y > this.b;
     const inCorner = (toRight || toLeft) && (above || below);
     let ans = false;
     
@@ -71,18 +65,18 @@ class AABB {
       let rectX = this.x;
       let rectY = this.y;
 
-      //calculate rectPoint, which is the closest corner of the AABB
+      //calculate the closest corner of the AABB
       //to the circle
       if (toRight) {
-        rectX += hw;
+        rectX += this.hw;
       } else if (toLeft) {
-        rectX -= hw;
+        rectX -= this.hw;
       }
 
       if (above) {
-        rectY -= hh;
+        rectY -= this.hh;
       } else if (below) {
-        rectY += hh;
+        rectY += this.hh;
       }
 
       //if the distance from rectPoint to the circle is less than the radius,
@@ -94,8 +88,8 @@ class AABB {
       ans = distSq <= circle.r*circle.r;
     }
     else { //not in corner
-      const lr = abs(circle.x - this.x) - circle.r <= hw;
-      const tb = abs(circle.y - this.y) - circle.r <= hh;
+      const lr = abs(circle.x - this.x) - circle.r <= this.hw;
+      const tb = abs(circle.y - this.y) - circle.r <= this.hh;
 
       ans = lr && tb;
     }
@@ -116,10 +110,12 @@ class AABB {
 
 
   contains(p) {
-    return p.x >= this.x - this.w/2 &&
-           p.x <= this.x + this.w/2 &&
-           p.y >= this.y - this.h/2 &&
-           p.y <= this.y + this.h/2;
+    return !(
+      p.x < this.l ||
+      p.x > this.r ||
+      p.y < this.t ||
+      p.y > this.b
+    );
   }
 
 
@@ -130,7 +126,7 @@ class AABB {
 
 
 class QuadTree {
-  constructor(bounds, capacity = 5) {
+  constructor(bounds, capacity = 3) {
     this.bounds = bounds;
     this.parent = parent;
     this.capacity = capacity;
@@ -140,8 +136,8 @@ class QuadTree {
 
 
   subdivide() {
-    const halfW = this.bounds.w/2;
-    const halfH = this.bounds.h/2;
+    const halfW = this.bounds.hw;
+    const halfH = this.bounds.hh;
     const quarW = halfW/2;
     const quarH = halfH/2;
 
@@ -181,9 +177,10 @@ class QuadTree {
           this.subdivide();
         }
       }
-
-      //add the point to the appropriate subtree
-      if (this.divided) {
+      
+      //could have subdivided in previous if, so check agian
+      if (this.divided) { 
+        //add the point to the appropriate subtree
         //only the quadrant containing the point will accept it
         this.ne.insert(boid);
         this.nw.insert(boid);
@@ -198,9 +195,7 @@ class QuadTree {
   query(area, found = []) {
     if (this.bounds.intersects(area)) {
       for (const b of this.points) {
-        const p = b.loc;
-
-        if (area.contains(p)) {
+        if (area.contains(b.loc)) {
           found.push(b);
         }
       }
